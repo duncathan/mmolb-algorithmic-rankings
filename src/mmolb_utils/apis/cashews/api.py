@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Iterator
+from typing import cast
 
 import requests
 from caseconverter import snakecase
@@ -42,7 +43,7 @@ def _get_simple_data(url: str) -> JsonType:
     return response.json()
 
 
-def _get_paginated_data[T: JsonType = JsonType](base_url: str, name: str | None = None) -> Iterator[T]:
+def _get_paginated_data[T = JsonObject](base_url: str, name: str | None, kind: type[T]) -> Iterator[T]:
     global _print_progress
 
     page_num = 0
@@ -55,7 +56,7 @@ def _get_paginated_data[T: JsonType = JsonType](base_url: str, name: str | None 
         if next_page is not FirstPage:
             url = f"{base_url}&page={next_page}"
 
-        data: PaginatedResult[T] | list[T] = _get_simple_data(url)
+        data = cast("PaginatedResult[T] | list[T]", _get_simple_data(url))
 
         if _print_progress:
             if name is None:
@@ -92,7 +93,7 @@ def get_entities(
         else:
             url += f"&id={id}"
 
-    yield from _get_paginated_data(url, kind.name)
+    yield from _get_paginated_data(url, kind.name, EntityVersion)
 
 
 def get_versions(
@@ -117,7 +118,7 @@ def get_versions(
         else:
             url += f"&id={id}"
 
-    yield from _get_paginated_data(url, "Versions")
+    yield from _get_paginated_data(url, "Versions", EntityVersion)
 
 
 def get_games(
@@ -131,15 +132,15 @@ def get_games(
     if team is not None:
         url += f"&team={team}"
 
-    yield from _get_paginated_data(url, "Games")
+    yield from _get_paginated_data(url, "Games", CashewsGame)
 
 
 def get_teams() -> Iterator[CashewsTeam]:
-    yield from _get_paginated_data(f"{CASHEWS_API}/teams", "Teams")
+    yield from _get_paginated_data(f"{CASHEWS_API}/teams", "Teams", CashewsTeam)
 
 
 def get_leagues() -> Iterator[CashewsLeague]:
-    yield from _get_paginated_data(f"{CASHEWS_API}/leagues", "Leagues")
+    yield from _get_paginated_data(f"{CASHEWS_API}/leagues", "Leagues", CashewsLeague)
 
 
 def get_player_stats(
@@ -159,15 +160,15 @@ def get_player_stats(
     if end is not None:
         url += f"&end={end.url_param}"
 
-    yield from _get_paginated_data(url, "Player Stats")
+    yield from _get_paginated_data(url, "Player Stats", CashewsPlayerStats)
 
 
 def get_scorigami() -> Iterator[CashewsScorigami]:
-    yield from _get_paginated_data(f"{CASHEWS_API}/scorigami", "Scorigami")
+    yield from _get_paginated_data(f"{CASHEWS_API}/scorigami", "Scorigami", CashewsScorigami)
 
 
 def get_locations() -> Iterator[CashewsLocation]:
-    yield from _get_paginated_data(f"{CASHEWS_API}/locations", "Locations")
+    yield from _get_paginated_data(f"{CASHEWS_API}/locations", "Locations", CashewsLocation)
 
 
 def get_stats(  # noqa: C901
@@ -217,4 +218,4 @@ def get_stats(  # noqa: C901
         url += filter_by
     url += f"&names={str(names).lower()}"
 
-    return _get_simple_data(url)
+    return cast("list[JsonObject]", _get_simple_data(url))

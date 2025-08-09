@@ -1,3 +1,4 @@
+import typing
 from collections.abc import Iterator
 
 import requests
@@ -20,25 +21,41 @@ def get_simple_endpoint(endpoint: str, id: str) -> JsonType:
     return get_data(url)
 
 
-def get_player_feed(id: str) -> JsonType:
+class FeedEntry(typing.TypedDict):
+    day: int
+    emoji: str
+    links: list[JsonObject]
+    season: int
+    status: str
+    text: str
+    ts: str
+    type: str
+
+
+class Feed(typing.TypedDict):
+    feed: list[FeedEntry]
+
+
+def get_player_feed(id: str) -> Feed:
     url = f"{MMOLB_API}/feed?player={id}"
-    return get_data(url)
+    return typing.cast("Feed", get_data(url))
 
 
-def get_team_feed(id: str) -> JsonType:
+def get_team_feed(id: str) -> Feed:
     url = f"{MMOLB_API}/feed?team={id}"
-    return get_data(url)
+    return typing.cast("Feed", get_data(url))
 
 
 def get_players(*player_ids: str) -> Iterator[JsonObject]:
-    players = [id for id in player_ids if (id and id != "#")]
-    if not players:
+    player_ids = tuple(id for id in player_ids if (id and id != "#"))
+    if not player_ids:
         yield from ()
         return
 
-    num_pages = (len(players) // 100) + 1
+    num_pages = (len(player_ids) // 100) + 1
     for i in range(num_pages):
         print(f"players page {i} / {num_pages}")
-        page = players[i * 100 : (i + 1) * 100]
+        page = player_ids[i * 100 : (i + 1) * 100]
         url = f"{MMOLB_API}/players?ids={','.join(page)}"
-        yield from get_data(url)["players"]
+        data = typing.cast("dict[str, list[JsonObject]]", get_data(url))
+        yield from data["players"]

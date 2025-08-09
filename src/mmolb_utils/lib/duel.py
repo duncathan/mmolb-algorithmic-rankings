@@ -1,4 +1,5 @@
 import functools
+import typing
 
 from mmolb_utils.apis import mmolb
 
@@ -17,5 +18,5 @@ def players_in_duel() -> set[str]:
         for feed in team["feed"]:
             for link in feed["links"]:
                 if link["type"] == "player":
-                    players.add(link["id"])
+                    players.add(typing.cast("str", link["id"]))
     return players

@@ -7,7 +7,7 @@ from mmolb_utils.lib.json_lib import JsonObject, JsonType
 type PageToken = str
 
 
-class PaginatedResult[T: JsonType = JsonType](TypedDict):
+class PaginatedResult[T = JsonType](TypedDict):
     items: list[T]
     next_page: PageToken | None
 
@@ -78,12 +78,12 @@ class EntityVersion[T: JsonType = JsonType](TypedDict):
     data: T
 
 
-type CashewsGame = JsonObject  # TODO: TypedDict
-type CashewsTeam = JsonObject  # TODO: TypedDict
-type CashewsLeague = JsonObject  # TODO: TypedDict
-type CashewsPlayerStats = JsonObject  # TODO: TypedDict
-type CashewsScorigami = JsonObject  # TODO: TypedDict
-type CashewsLocation = JsonObject  # TODO: TypedDict
+CashewsGame = JsonObject  # TODO: TypedDict
+CashewsTeam = JsonObject  # TODO: TypedDict
+CashewsLeague = JsonObject  # TODO: TypedDict
+CashewsPlayerStats = JsonObject  # TODO: TypedDict
+CashewsScorigami = JsonObject  # TODO: TypedDict
+CashewsLocation = JsonObject  # TODO: TypedDict
 
 
 class StatKey(IntEnum):

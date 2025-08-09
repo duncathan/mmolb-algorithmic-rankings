@@ -21,7 +21,9 @@ dependencies = [
     "networkx",
     "numpy",
     "pandas",
+    "pandas-stubs",
     "requests",
+    "types-requests",
     "case-converter",
     "statsmodels"
 ]
@@ -41,8 +43,8 @@ extend-exclude = ["src/mmolb_utils/scripts"]
 
 [tool.mypy]
 files = [
-    "src/lib",
-    "src/apis",
+    "src/mmolb_utils/lib",
+    "src/mmolb_utils/apis",
 ]
 follow_imports = "silent"
 disallow_untyped_defs = true
@@ -51,3 +53,13 @@ warn_unused_ignores = true
 enable_error_code = [
     "ignore-without-code",
 ]
+
+[[tool.mypy.overrides]]
+# any dependencies which we do not control but are missing types go here
+# not too much can be done about these, so they're not the end of the world
+# dependencies we DO control should use `type: ignore[import-untyped]`
+module = [
+    "caseconverter.*",
+    "statsmodels.*",
+]
+ignore_missing_imports = true

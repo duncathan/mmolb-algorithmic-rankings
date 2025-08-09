@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Literal
+from typing import cast
 
 import pandas as pd
 import statsmodels.api as sm
@@ -41,7 +41,10 @@ def get_attributes(
     kind: cashews.EntityKind,
 ) -> Attributes:
     return {
-        talk["entity_id"]: {attribute: len(stars) * 0.25 for attribute, stars in talk["data"]["stars"].items()}
+        talk["entity_id"]: {
+            attribute: len(stars) * 0.25  # type: ignore[arg-type]
+            for attribute, stars in talk["data"]["stars"].items()  # type: ignore[call-overload, index, union-attr]
+        }
         for talk in cashews.get_entities(kind)
     }
 
@@ -52,7 +55,11 @@ pitching_attributes: Attributes[PitchingAttribute] = get_attributes(cashews.Enti
 defense_attributes: Attributes[DefenseAttribute] = get_attributes(cashews.EntityKind.TalkDefense)
 
 era_stats = cashews.get_stats(StatKey.EarnedRuns, StatKey.Outs, season=4, names=True)
-era_dict = {stat["player_id"]: (9 * stat["earned_runs"] / (stat["outs"] / 3)) for stat in era_stats if stat["outs"]}
+era_dict = {
+    stat["player_id"]: (9 * stat["earned_runs"] / (stat["outs"] / 3))  # type: ignore[operator]
+    for stat in era_stats
+    if stat["outs"]
+}
 
 ops_stats = cashews.get_stats(
     StatKey.Singles,
@@ -67,25 +74,26 @@ ops_stats = cashews.get_stats(
 )
 
 
-def ops(stat):
+def ops(stat: dict[str, int]) -> float:
     hits = stat["singles"] + stat["doubles"] + stat["triples"] + stat["home_runs"]
     obp = (hits + stat["walks"] + stat["hit_by_pitch"]) / float(stat["plate_appearances"])
     slg = (stat["singles"] + stat["doubles"] * 2 + stat["triples"] * 3 + stat["home_runs"] * 4) / float(stat["at_bats"])
     return obp + slg
 
 
-ops_dict = {stat["player_id"]: ops(stat) for stat in ops_stats if stat["plate_appearances"] and stat["at_bats"]}
-
-input_attributes: dict[EntityID, dict[BattingAttribute | BaserunningAttribute | Literal["Luck"], float]] = {}
-numerical_attributes = {
-    entity: {attribute: len(stars) * 0.25 for attribute, stars in talk.items()}
-    for entity, talk in batting_attributes.items()
+ops_dict = {
+    stat["player_id"]: ops(cast("dict[str, int]", stat))
+    for stat in ops_stats
+    if stat["plate_appearances"] and stat["at_bats"]
 }
 
-for player, attributes in numerical_attributes.items():
+input_attributes: dict[EntityID, dict[str, float]] = {}
+
+for player, bat_attributes in batting_attributes.items():
+    attributes: dict[str, float] = {attr: val for attr, val in bat_attributes.items()}
     if (player in baserunning_attributes) and (player in defense_attributes) and ("Luck" in defense_attributes[player]):
-        attributes["Luck"] = len(defense_attributes[player]["Luck"]) * 0.25
-        attributes.update({attr: len(stars) * 0.25 for attr, stars in baserunning_attributes[player].items()})
+        attributes["Luck"] = defense_attributes[player]["Luck"]
+        attributes.update({attr: val for attr, val in baserunning_attributes[player].items()})
         input_attributes[player] = attributes
 
 data = defaultdict(list)
