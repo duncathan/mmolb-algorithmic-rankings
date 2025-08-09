@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mmolb-utils"
 dynamic = ["version"]
-description = ""
+description = "Utilities for doing data analysis on MMOLB"
 authors = [{name="duncathan salt"}]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.12",
 ]
 
 license = "MIT"
@@ -31,3 +31,22 @@ rankings = ["glicko2", "skelo"]
 
 [project.urls]
 Homepage = "https://github.com/duncathan/mmolb-utils"
+
+[tool.ruff]
+line-length = 120
+lint.select = ["E", "F", "W", "C90", "I", "UP"]
+src = ["src"]
+target-version = "py312"
+
+[tool.mypy]
+files = [
+    "src/lib",
+    "src/apis",
+]
+follow_imports = "silent"
+disallow_untyped_defs = true
+local_partial_types = true
+warn_unused_ignores = true
+enable_error_code = [
+    "ignore-without-code",
+]
