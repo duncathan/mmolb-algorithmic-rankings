@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=44.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmolb-utils"
+dynamic = ["version"]
+description = ""
+authors = [{name="duncathan salt"}]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.13",
+]
+
+license = "MIT"
+requires-python = ">=3.12"
+
+dependencies = [
+    "networkx",
+    "numpy",
+    "pandas",
+    "requests",
+    "case-converter",
+    "statsmodels"
+]
+
+[project.optional-dependencies]
+rankings = ["glicko2", "skelo"]
+
+[project.urls]
+Homepage = "https://github.com/duncathan/mmolb-utils"
