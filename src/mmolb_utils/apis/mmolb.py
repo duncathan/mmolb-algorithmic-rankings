@@ -1,7 +1,8 @@
 from collections.abc import Iterator
-import requests
-from mmolb_utils.lib.json_lib import JsonObject, JsonType
 
+import requests
+
+from mmolb_utils.lib.json_lib import JsonObject, JsonType
 
 type EntityID = str
 
@@ -23,6 +24,7 @@ def get_player_feed(id: str) -> JsonType:
     url = f"{MMOLB_API}/feed?player={id}"
     return get_data(url)
 
+
 def get_team_feed(id: str) -> JsonType:
     url = f"{MMOLB_API}/feed?team={id}"
     return get_data(url)
@@ -33,10 +35,10 @@ def get_players(*player_ids: str) -> Iterator[JsonObject]:
     if not players:
         yield from ()
         return
-    
+
     num_pages = (len(players) // 100) + 1
     for i in range(num_pages):
         print(f"players page {i} / {num_pages}")
-        page = players[i*100:(i+1) * 100]
+        page = players[i * 100 : (i + 1) * 100]
         url = f"{MMOLB_API}/players?ids={','.join(page)}"
-        yield from get_data(url)['players']
+        yield from get_data(url)["players"]

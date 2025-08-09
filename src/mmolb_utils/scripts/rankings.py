@@ -1,17 +1,11 @@
-import codecs
 import json
-import pprint
-import sys
 import time
 import urllib
 import urllib.request
-from collections import defaultdict
 from math import floor
 
 import glicko2
 import pandas as pd
-from skelo.model.elo import EloEstimator
-from skelo.model.glicko2 import Glicko2Estimator
 
 glicko2.Player._tau = 0.3
 
@@ -90,7 +84,7 @@ def get_current_game_state(old_game):
         game = json.load(url)
     if game["State"] != "Complete":
         return old_game
-    
+
     new_game = old_game.copy()
     new_game["home_score"] = game["EventLog"][-1]["home_score"]
     new_game["away_score"] = game["EventLog"][-1]["away_score"]
@@ -163,7 +157,7 @@ print(teams_with_missing_games[['FullName', 'Birthday', "Games Played (team API)
 #     # latest_game = league_games.iloc[-1]["timestamp"]
 #     # if any(state != "Complete" for state in league_games.loc[league_games["timestamp"] == latest_game]["state"]):
 #     #     league_games = league_games.loc[league_games["timestamp"] < latest_game]
-    
+
 #     league_teams = teams.loc[teams["League"] == league_id]
 
 #     league_ratings = pd.DataFrame(index=league_teams.index)
@@ -212,7 +206,7 @@ print(teams_with_missing_games[['FullName', 'Birthday', "Games Played (team API)
 #     # elo_pivoted.ffill(axis='index', inplace=True)
 
 #     # league_ratings["elo"] = elo_pivoted.iloc[-1]
-    
+
 #     def get_sorted(data):
 #         return data.apply(lambda row: f"{row['name']} ({row['wins']}-{row['losses']}, {row['win_diff']:+} W, {row['run_diff']:+} R)", axis='columns').values
 

@@ -1,17 +1,19 @@
 from enum import IntEnum, auto
-from typing import Literal, NamedTuple, TypeAlias, TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 from mmolb_utils.apis.mmolb import EntityID
 from mmolb_utils.lib.json_lib import JsonObject, JsonType
 
-
 type PageToken = str
+
 
 class PaginatedResult[T: JsonType = JsonType](TypedDict):
     items: list[T]
     next_page: PageToken | None
 
+
 type SortOrder = Literal["asc", "desc"]
+
 
 class EntityKind(IntEnum):
     State = 1
@@ -56,6 +58,7 @@ class EntityKind(IntEnum):
 
 type IsoDateTime = str
 
+
 class SeasonDay(NamedTuple):
     season: int
     day: int
@@ -63,6 +66,7 @@ class SeasonDay(NamedTuple):
     @property
     def url_param(self) -> str:
         return f"{self.season},{self.day}"
+
 
 class EntityVersion[T: JsonType = JsonType](TypedDict):
     kind: str
@@ -73,12 +77,13 @@ class EntityVersion[T: JsonType = JsonType](TypedDict):
     valid_to: IsoDateTime | None
     data: T
 
-CashewsGame: TypeAlias = JsonObject # TODO: TypedDict
-CashewsTeam: TypeAlias = JsonObject # TODO: TypedDict
-CashewsLeague: TypeAlias = JsonObject # TODO: TypedDict
-CashewsPlayerStats: TypeAlias = JsonObject # TODO: TypedDict
-CashewsScorigami: TypeAlias = JsonObject # TODO: TypedDict
-CashewsLocation: TypeAlias = JsonObject # TODO: TypedDict
+
+type CashewsGame = JsonObject  # TODO: TypedDict
+type CashewsTeam = JsonObject  # TODO: TypedDict
+type CashewsLeague = JsonObject  # TODO: TypedDict
+type CashewsPlayerStats = JsonObject  # TODO: TypedDict
+type CashewsScorigami = JsonObject  # TODO: TypedDict
+type CashewsLocation = JsonObject  # TODO: TypedDict
 
 
 class StatKey(IntEnum):

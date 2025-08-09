@@ -11,11 +11,11 @@ authors = [{name="duncathan salt"}]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 
 dependencies = [
     "networkx",
@@ -36,7 +36,8 @@ Homepage = "https://github.com/duncathan/mmolb-utils"
 line-length = 120
 lint.select = ["E", "F", "W", "C90", "I", "UP"]
 src = ["src"]
-target-version = "py312"
+target-version = "py313"
+extend-exclude = ["src/mmolb_utils/scripts"]
 
 [tool.mypy]
 files = [

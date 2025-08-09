@@ -1,5 +1,6 @@
 import itertools
-import urllib.request, json
+import json
+import urllib.request
 
 import networkx as nx
 from networkx.algorithms.approximation import traveling_salesman_problem
@@ -14,16 +15,16 @@ while next_page is not None:
     url = f"https://freecashe.ws/api/chron/v0/entities?kind=player_lite&count={count_per_page}"
     if next_page is not ...:
         url = f"{url}&page={next_page}"
-    
+
     with urllib.request.urlopen(url) as page:
         players = json.load(page)
-    
+
     next_page = players["next_page"]
     for player in players["items"]:
         if any((mod["Name"] == "Relegated") for mod in player["data"]["Modifications"]):
             continue
         interests.add_edge(player["data"]["Likes"], player["data"]["Dislikes"], player=player["entity_id"])
-    
+
     page_num += 1
     print(f"Processed {page_num * count_per_page} players...")
 

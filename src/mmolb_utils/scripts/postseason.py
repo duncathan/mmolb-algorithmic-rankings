@@ -1,20 +1,17 @@
 from __future__ import annotations
 
-from bisect import bisect_left
-from collections import defaultdict
 import copy
-from enum import Enum
 import itertools
 import json
 import math
-from typing import Container, Iterable
 import urllib.request
-
+from bisect import bisect_left
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-
+from enum import Enum
 
 import networkx as nx
-
 
 API = "https://mmolb.com/api/"
 
@@ -33,18 +30,18 @@ class Team:
     @property
     def win_diff(self) -> int:
         return self.wins - self.losses
-    
+
     @property
     def games_remaining(self) -> int:
         return 120 - (self.wins + self.losses)
-    
+
     @property
     def most_possible_wins(self) -> int:
         return self.wins + self.games_remaining
 
     def __repr__(self) -> str:
         return f"{self.name} ({self.wins} - {self.losses})"
-    
+
     def divisional_status(
             self,
             all_teams: Iterable[Team],
@@ -53,7 +50,7 @@ class Team:
         if "divisional" not in self.cached_data:
             self.cached_data["divisional"] = self._divisional_status(all_teams, remaining_games)
         return self.cached_data["divisional"]
-    
+
     def _divisional_status(
             self,
             all_teams: Iterable[Team],
@@ -63,15 +60,15 @@ class Team:
         division_standings = sorted_teams(division)
         our_standing = division_standings.index(self)
         fake_standings = {team: team.wins for team in division_standings}
-        
+
         if self.most_possible_wins < division_standings[1].wins:
             # if we can't win more games than #2 already has, there's no hope
             return Postseason.BEIGED
-        
+
         if self.wins > division_standings[2].most_possible_wins:
             # if we can't *lose* more games than #3 already has, it's guaranteed
             return Postseason.CLINCHED
-        
+
         if self.wins >= division_standings[1].wins:
             # it may be possible we've clinched?
             return Postseason.CONTENDER # for now
@@ -79,7 +76,7 @@ class Team:
             # it may be possible we're eliminated?
             division_leader = division_standings[0]
             unhandled_games: dict[tuple[Team, Team], int] = {}
-            
+
             for (home, away), num_games in remaining_games.items():
                 # win em all, baby
                 if home == self or away == self:
@@ -98,13 +95,13 @@ class Team:
                 if division_standings.index(away) > our_standing:
                     fake_standings[away] += num_games
                     continue
-                
+
                 unhandled_games[(home, away)] = num_games
-            
+
             if self.can_top_subdivision(unhandled_games, fake_standings):
                 # we have a chance to win the division, so def a chance at postseason
                 return Postseason.CONTENDER
-            
+
             old_unhandled = unhandled_games
             unhandled_games = {}
 
@@ -116,10 +113,10 @@ class Team:
                     continue
 
                 unhandled_games[(home, away)] = num_games
-            
+
             if self.can_top_subdivision(unhandled_games, fake_standings):
                 return Postseason.CONTENDER
-            
+
             return Postseason.BEIGED
 
 
@@ -147,13 +144,13 @@ class Team:
         if self.most_possible_wins < standings[5].wins:
             # if we can't win more games than #6 already has, there's no hope
             return Postseason.BEIGED
-        
+
         division = {team for team in all_teams if team.league == self.league}
         division_standings = sorted_teams(division)
         division_leaders = division_standings[:2]
-        
+
         unhandled_games: dict[tuple[Team, Team], int] = {}
-        
+
         for (home, away), num_games in remaining_games.items():
             # win em all, baby
             if home == self or away == self:
@@ -178,30 +175,30 @@ class Team:
             if away in division_leaders:
                 fake_standings[away] += num_games
                 continue
-            
+
             unhandled_games[(home, away)] = num_games
-        
+
         if self.can_top_subdivision(unhandled_games, fake_standings):
             # we have a chance to be #3 record overall
             return Postseason.CONTENDER
-        
+
         # time for evil
         games_to_sim: list[tuple[Team, Team]] = []
         for matchup, games in unhandled_games.items():
             for i in range(games):
                 games_to_sim.append(matchup)
-        
+
         total = math.pow(2, len(games_to_sim))
         for i, possible_results in enumerate(itertools.product((True, False), repeat=len(games_to_sim))):
             faker_standings = copy.copy(fake_standings)
-            
+
             print(i * 100.0 / float(total))
             for (home, away), home_win in zip(games_to_sim, possible_results, strict=True):
                 if home_win:
                     faker_standings[home] += 1
                 else:
                     faker_standings[away] += 1
-            
+
             sorted_this_division = sorted((team for team in faker_standings.keys() if team.league == self.league), key=lambda team: faker_standings[team], reverse=True)
             sorted_other_division = sorted((team for team in faker_standings.keys() if team.league != self.league), key=lambda team: faker_standings[team], reverse=True)
 
@@ -212,7 +209,7 @@ class Team:
             # print()
             if faker_standings[self] >= faker_standings[sorted_wildcards[1]]:
                 return Postseason.CONTENDER
-        
+
         return Postseason.BEIGED
 
 
@@ -227,16 +224,16 @@ class Team:
             status = self.beiged_wildcard(all_teams, remaining_games)
         if status == Postseason.CONTENDER:
             status = self.clinched_wildcard(all_teams, remaining_games)
-        
+
         return status
-        
+
 
     def can_top_subdivision(self, games: dict[tuple[Team, Team], int], standings: dict[Team, int]) -> bool:
         # print(standings)
         # print(games)
 
         remaining_games = sum(games.values())
-        
+
         graph = nx.DiGraph()
         graph.add_node("s")
         graph.add_node("t")
@@ -246,7 +243,7 @@ class Team:
             for team in matchup:
                 graph.add_edge(matchup, team)
                 graph.add_edge(team, "t", capacity=(standings[self] - standings[team]))
-        
+
         flow_val, flow_dict = nx.maximum_flow(graph, "s", "t")
 
         return flow_val >= remaining_games
@@ -255,15 +252,15 @@ class Team:
 def sorted_teams(teams: Iterable[Team]) -> list[Team]:
     def tiebreak(team: Team) -> tuple[int, int, str]:
         return team.win_diff, team.run_diff, team.id
-    
+
     return sorted(teams, key=tiebreak, reverse=True)
-    
+
 
 class Postseason(Enum):
     BEIGED = 0
     CONTENDER = 1
     CLINCHED = 2
-    
+
 
 
 clover_id = "6805db0cac48194de3cd3fe4"
@@ -290,7 +287,7 @@ def teams_for_league(league_id: str) -> dict[str, Team]:
         )
 
         teams[team.id] = team
-    
+
     return teams
 
 print("clover")
@@ -304,7 +301,7 @@ def remaining_schedule(season_id: str) -> dict[tuple[Team, Team], int]:
 
     with urllib.request.urlopen(f"{API}/season/{season_id}") as season_url:
         season = json.load(season_url)
-    
+
     days: list[str] = season["Days"]
     days_cache: dict[str, dict] = {}
 
@@ -314,7 +311,7 @@ def remaining_schedule(season_id: str) -> dict[tuple[Team, Team], int]:
         print(day["Day"])
         days_cache[day_id] = day
         return all((game["State"] != "Complete") for game in day["Games"])
-    
+
     first_unfinished_day = bisect_left(days, True, key=is_day_incomplete)
     print()
 
@@ -332,7 +329,7 @@ def remaining_schedule(season_id: str) -> dict[tuple[Team, Team], int]:
                 continue
             matchup = (all_teams[game["AwayTeamID"]], all_teams[game["HomeTeamID"]])
             remaining_games[matchup] += 1
-    
+
     return remaining_games
 
 schedule = remaining_schedule(season2_id)

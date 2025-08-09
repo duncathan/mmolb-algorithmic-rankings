@@ -1,5 +1,5 @@
-from collections import defaultdict
 import json
+from collections import defaultdict
 from statistics import mean, stdev
 from typing import Literal
 
@@ -32,7 +32,7 @@ for player in cashews.get_entities(cashews.EntityKind.Player):
 for talk in cashews.get_entities(cashews.EntityKind.Talk):
     if talk['entity_id'] in players_in_duel():
         continue
-    
+
     for category, info in talk['data'].items():
         full_stars = "".join(info['stars'].values())
         star_counts[category].append(len(full_stars))

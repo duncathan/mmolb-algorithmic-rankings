@@ -1,8 +1,6 @@
 import functools
-from typing import Iterator
 
 from mmolb_utils.apis import mmolb
-
 
 ANDROMEDA = "686dcf38775d6c67e270a938"
 MILKY_WAY = "686dcf83cd624ef8ea0f6abc"
@@ -16,9 +14,8 @@ def players_in_duel() -> set[str]:
         team = mmolb.get_team_feed(team_id)
         print(team.keys())
 
-        for feed in team['feed']:
-            for link in feed['links']:
-                if link['type'] == 'player':
-                    players.add(link['id'])
+        for feed in team["feed"]:
+            for link in feed["links"]:
+                if link["type"] == "player":
+                    players.add(link["id"])
     return players
-                    

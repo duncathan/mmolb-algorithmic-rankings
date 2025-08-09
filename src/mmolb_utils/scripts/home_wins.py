@@ -1,5 +1,7 @@
 import dataclasses
+
 from mmolb_utils.apis import cashews
+
 
 @dataclasses.dataclass
 class Record:
@@ -8,15 +10,15 @@ class Record:
 
     def __repr__(self) -> str:
         return f"{self.wins} - {self.losses}"
-    
+
     @property
     def diff(self) -> int:
         return self.wins - self.losses
-    
+
     @property
     def games_played(self) -> int:
         return self.wins + self.losses
-    
+
     @property
     def win_rate(self) -> float:
         return float(self.wins) / float(self.games_played)
@@ -29,7 +31,7 @@ for game in cashews.get_games(season=3):
 
     # if game['day'] > 12:
     #     continue
-    
+
     status = game['last_update']
     home_win = status["home_score"] > status["away_score"]
 

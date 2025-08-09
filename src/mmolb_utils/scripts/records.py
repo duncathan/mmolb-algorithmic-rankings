@@ -1,11 +1,11 @@
-from collections import defaultdict
 import dataclasses
 import statistics
+from collections import defaultdict
 
-from matplotlib import pyplot as plt
 import matplotlib
 import matplotlib.cm
-from matplotlib.colors import LogNorm, Normalize
+from matplotlib import pyplot as plt
+from matplotlib.colors import Normalize
 
 from mmolb_utils.apis import cashews
 
@@ -17,15 +17,15 @@ class Record:
 
     def __repr__(self) -> str:
         return f"{self.wins} - {self.losses}"
-    
+
     @property
     def diff(self) -> int:
         return self.wins - self.losses
-    
+
     @property
     def games_played(self) -> int:
         return self.wins + self.losses
-    
+
     @property
     def win_rate(self) -> float:
         return float(self.wins) / float(self.games_played)
@@ -49,7 +49,7 @@ for game in cashews.get_games(season=2):
 
     if game['state'] != "Complete":
         continue
-    
+
     home = game["home_team_id"]
     away = game["away_team_id"]
 
@@ -88,7 +88,10 @@ values = num_opponents.values()
 win_diffs: dict[int, list[int]] = defaultdict(list)
 for team, records in all_records.items():
     win_diffs[len(records)].append(abs(season_records[team].diff))
-win_diffs_tup: list[tuple[int, list[int]]] = sorted(((num, diff) for num, diff in win_diffs.items()), key=lambda it: it[0])
+win_diffs_tup: list[tuple[int, list[int]]] = sorted(
+    ((num, diff) for num, diff in win_diffs.items()),
+    key=lambda it: it[0],
+)
 
 average_win_diff = [statistics.mean(diff) for _, diff in win_diffs_tup]
 max_win_diff = max(average_win_diff)

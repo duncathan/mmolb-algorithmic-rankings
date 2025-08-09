@@ -1,14 +1,12 @@
-from collections import defaultdict
 import dataclasses
 import functools
 import statistics
+from collections import defaultdict
 
 from matplotlib import pyplot as plt
-import matplotlib
-import matplotlib.cm
-from matplotlib.colors import LogNorm, Normalize
 
 from mmolb_utils.apis import cashews
+
 
 @functools.total_ordering
 @dataclasses.dataclass
@@ -18,19 +16,19 @@ class Record:
 
     def __repr__(self) -> str:
         return f"{self.wins} - {self.losses}"
-    
+
     @property
     def diff(self) -> int:
         return self.wins - self.losses
-    
+
     @property
     def games_played(self) -> int:
         return self.wins + self.losses
-    
+
     @property
     def win_rate(self) -> float:
         return float(self.wins) / float(self.games_played)
-    
+
     def __lt__(self, other: "Record") -> bool:
         return self.diff < other.diff
 
@@ -53,7 +51,7 @@ for game in cashews.get_games(season=3):
 
     if game['state'] != "Complete":
         continue
-    
+
     home = game["home_team_id"]
     away = game["away_team_id"]
 
