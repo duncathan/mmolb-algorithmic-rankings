@@ -71,6 +71,7 @@ ops_stats = cashews.get_stats(
     StatKey.PlateAppearances,
     StatKey.AtBats,
     season=4,
+    filters=(StatKey.PlateAppearances > 100) & (StatKey.AtBats > 0),
 )
 
 
