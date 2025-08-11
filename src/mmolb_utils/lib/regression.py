@@ -5,7 +5,7 @@ import pandas as pd
 import statsmodels.api as sm
 
 from mmolb_utils.apis import cashews
-from mmolb_utils.apis.cashews.types import StatKey
+from mmolb_utils.apis.cashews import StatKey
 from mmolb_utils.apis.mmolb import EntityID
 from mmolb_utils.lib.attributes import (
     BaserunningAttribute,
