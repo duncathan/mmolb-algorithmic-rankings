@@ -3,12 +3,11 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Iterable
 from enum import Enum, auto
-from typing import Literal, TypeGuard, cast
+from typing import Literal, Required, TypedDict, TypeGuard, cast
 
 from mmolb_utils.apis.cashews.misc import SeasonDay, SnakeCaseParam
 from mmolb_utils.apis.cashews.request import _get_simple_data
 from mmolb_utils.apis.mmolb import EntityID
-from mmolb_utils.lib.json_lib import JsonObject
 
 
 class StatKey(SnakeCaseParam, Enum):
@@ -81,7 +80,7 @@ class StatKey(SnakeCaseParam, Enum):
     def __lt__(self, other: object) -> _StatFilter:
         return self._filter(other, "lt")
 
-    def __eq__(self, other: object) -> _StatFilter:
+    def __eq__(self, other: object) -> _StatFilter:  # type: ignore[override]
         return self._filter(other, "eq")
 
     def __le__(self, other: object) -> _StatFilter:
@@ -133,6 +132,68 @@ class _StatFilter:
 type StatFilter = _StatFilter | Iterable[_StatFilter]
 
 
+class StatRow(TypedDict, total=False):
+    player_id: Required[str]
+    player_name: str
+    allowed_stolen_bases: int
+    appearances: int
+    assists: int
+    at_bats: int
+    batters_faced: int
+    blown_saves: int
+    caught_double_play: int
+    caught_stealing: int
+    complete_games: int
+    double_plays: int
+    doubles: int
+    earned_runs: int
+    errors: int
+    field_out: int
+    fielders_choice: int
+    flyouts: int
+    force_outs: int
+    games_finished: int
+    grounded_into_double_play: int
+    groundouts: int
+    hit_batters: int
+    hit_by_pitch: int
+    hits_allowed: int
+    home_runs: int
+    home_runs_allowed: int
+    inherited_runners: int
+    inherited_runs_allowed: int
+    left_on_base: int
+    lineouts: int
+    losses: int
+    mound_visits: int
+    no_hitters: int
+    outs: int
+    perfect_games: int
+    pitches_thrown: int
+    plate_appearances: int
+    popouts: int
+    putouts: int
+    quality_starts: int
+    reached_on_error: int
+    runners_caught_stealing: int
+    runs: int
+    runs_batted_in: int
+    sac_flies: int
+    sacrifice_double_plays: int
+    saves: int
+    shutouts: int
+    singles: int
+    starts: int
+    stolen_bases: int
+    intikeouts: int
+    intuck_out: int
+    triples: int
+    unearned_runs: int
+    walked: int
+    walks: int
+    wins: int
+
+
 def get_stats(  # noqa: C901
     *fields: StatKey,
     group: GroupColumn | Iterable[GroupColumn] = GroupColumn.Player,
@@ -147,14 +208,14 @@ def get_stats(  # noqa: C901
     count: int | None = None,
     filters: StatFilter = (),
     names: bool = False,
-) -> list[JsonObject]:
+) -> list[StatRow]:
     if isinstance(filters, _StatFilter):
         filters = (filters,)
 
     filter_dict = {filt.param_name: filt.value for filt in filters}
 
     return cast(
-        "list[JsonObject]",
+        "list[StatRow]",
         _get_simple_data(
             "stats",
             format="json",

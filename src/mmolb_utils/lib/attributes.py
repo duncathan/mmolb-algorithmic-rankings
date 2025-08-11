@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Literal, NotRequired, TypedDict
 
 type Category = Literal["Batting", "Pitching", "Baserunning", "Defense"]
@@ -54,11 +55,11 @@ type Attribute = BattingAttribute | PitchingAttribute | BaserunningAttribute | D
 type Stars = str
 
 
-class CategoryTalk[T = Attribute](TypedDict):
+class CategoryTalk[T: str = Attribute](TypedDict):
     quote: str
     season: NotRequired[int]
     day: NotRequired[int | str]
-    stars: dict[T, Stars]
+    stars: Mapping[T, Stars]
 
 
 class ClubhouseTalk(TypedDict, total=False):

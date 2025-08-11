@@ -1,24 +1,39 @@
-import itertools
-from collections.abc import Iterator
-from enum import Enum
-from typing import TypedDict
+from __future__ import annotations
 
-from mmolb_utils.apis.cashews.misc import SnakeCaseParam, SortOrder
-from mmolb_utils.apis.cashews.request import Param, _get_paginated_data
-from mmolb_utils.apis.mmolb import EntityID
-from mmolb_utils.lib.json_lib import JsonType
+import itertools
+import typing
+from collections.abc import Iterator, Mapping
+from enum import Enum
+from typing import Any, Literal, ReadOnly, TypedDict
+
+from mmolb_utils.apis.cashews.misc import SnakeCaseParam
+from mmolb_utils.apis.cashews.request import _get_paginated_data
+
+if typing.TYPE_CHECKING:
+    from mmolb_utils.apis.cashews.misc import SortOrder
+    from mmolb_utils.apis.cashews.request import Param
+    from mmolb_utils.apis.mmolb import EntityID
+    from mmolb_utils.lib.attributes import (
+        BaserunningAttribute,
+        BattingAttribute,
+        CategoryTalk,
+        ClubhouseTalk,
+        DefenseAttribute,
+        PitchingAttribute,
+    )
+    from mmolb_utils.lib.json_lib import JsonObject
 
 type IsoDateTime = str
 
 
-class EntityVersion[T: JsonType = JsonType](TypedDict):
+class EntityVersion[T: Mapping = JsonObject](TypedDict):
     kind: str
     """Always a valid `EntityKind` value"""
 
     entity_id: EntityID
     valid_from: IsoDateTime
     valid_to: IsoDateTime | None
-    data: T
+    data: ReadOnly[T]
 
 
 class EntityKind(SnakeCaseParam, Enum):
@@ -62,6 +77,11 @@ class EntityKind(SnakeCaseParam, Enum):
     TeamFeed = 28
 
 
+type AnyCategoryTalk = Literal[
+    EntityKind.TalkBatting, EntityKind.TalkBaserunning, EntityKind.TalkPitching, EntityKind.TalkDefense
+]
+
+
 def _split_ids(id: EntityID | list[EntityID] | None = None) -> Iterator[Param]:
     if not isinstance(id, list):
         yield id
@@ -70,13 +90,73 @@ def _split_ids(id: EntityID | list[EntityID] | None = None) -> Iterator[Param]:
     yield from itertools.batched(id, 1000)
 
 
-def get_entities[T: JsonType = JsonType](
+@typing.overload
+def get_entities(
+    kind: Literal[EntityKind.Talk],
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[ClubhouseTalk]]: ...
+
+
+@typing.overload
+def get_entities(  # type: ignore[overload-overlap]
+    kind: Literal[EntityKind.TalkBatting],
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[CategoryTalk[BattingAttribute]]]: ...
+
+
+@typing.overload
+def get_entities(  # type: ignore[overload-overlap]
+    kind: Literal[EntityKind.TalkBaserunning],
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[CategoryTalk[BaserunningAttribute]]]: ...
+
+
+@typing.overload
+def get_entities(  # type: ignore[overload-overlap]
+    kind: Literal[EntityKind.TalkPitching],
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[CategoryTalk[PitchingAttribute]]]: ...
+
+
+@typing.overload
+def get_entities(  # type: ignore[overload-overlap]
+    kind: Literal[EntityKind.TalkDefense],
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[CategoryTalk[DefenseAttribute]]]: ...
+
+
+@typing.overload
+def get_entities(
+    kind: AnyCategoryTalk,
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[CategoryTalk]]: ...
+
+
+def get_entities(
     kind: EntityKind,
     at: IsoDateTime | None = None,
     id: EntityID | list[EntityID] | None = None,
     order: SortOrder = "asc",
     count: int = 1000,
-) -> Iterator[EntityVersion[T]]:
+) -> Iterator[EntityVersion[Any]]:
     for ids in _split_ids(id):
         yield from _get_paginated_data(
             "chron/v0/entities",
@@ -90,14 +170,14 @@ def get_entities[T: JsonType = JsonType](
         )
 
 
-def get_versions[T: JsonType = JsonType](
+def get_versions(
     kind: EntityKind,
     before: IsoDateTime | None = None,
     after: IsoDateTime | None = None,
     id: EntityID | list[EntityID] | None = None,
     order: SortOrder = "asc",
     count: int = 1000,
-) -> Iterator[EntityVersion[T]]:
+) -> Iterator[EntityVersion[Any]]:
     for ids in _split_ids(id):
         yield from _get_paginated_data(
             "chron/v0/versions",

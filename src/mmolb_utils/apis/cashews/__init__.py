@@ -1,4 +1,5 @@
 from mmolb_utils.apis.cashews.chron_api import (
+    AnyCategoryTalk,
     EntityKind,
     EntityVersion,
     get_entities,
@@ -28,6 +29,7 @@ __all__ = [
     "get_entities",
     "get_versions",
     "EntityKind",
+    "AnyCategoryTalk",
     "EntityVersion",
     "get_games",
     "get_teams",
