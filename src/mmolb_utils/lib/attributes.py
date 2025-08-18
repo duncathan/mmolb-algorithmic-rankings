@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Literal, NotRequired, TypedDict
+from typing import Final, Literal, NotRequired, TypedDict
 
 type Category = Literal["Batting", "Pitching", "Baserunning", "Defense"]
 
@@ -53,6 +53,14 @@ type DefenseAttribute = Literal[
 type Attribute = BattingAttribute | PitchingAttribute | BaserunningAttribute | DefenseAttribute
 
 type Stars = str
+
+BATTING_ATTRIBUTES: Final[tuple[BattingAttribute, ...]] = BattingAttribute.__value__.__args__
+PITCHING_ATTRIBUTES: Final[tuple[PitchingAttribute, ...]] = PitchingAttribute.__value__.__args__
+BASERUNNING_ATTRIBUTES: Final[tuple[BaserunningAttribute, ...]] = BaserunningAttribute.__value__.__args__
+DEFENSE_ATTRIBUTES: Final[tuple[DefenseAttribute, ...]] = DefenseAttribute.__value__.__args__
+ALL_ATTRIBUTES: Final[tuple[Attribute, ...]] = (
+    BATTING_ATTRIBUTES + PITCHING_ATTRIBUTES + BASERUNNING_ATTRIBUTES + DEFENSE_ATTRIBUTES
+)
 
 
 class CategoryTalk[T: str = Attribute](TypedDict):

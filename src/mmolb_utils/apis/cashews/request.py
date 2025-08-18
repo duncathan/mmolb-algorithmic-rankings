@@ -1,5 +1,7 @@
 import typing
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from datetime import datetime
 from http.client import responses
 
 import requests
@@ -16,12 +18,15 @@ class Paramable(typing.Protocol):
     def url_param(self) -> _RawParam: ...
 
 
-type Param = _RawParam | bool | Paramable | Iterable["Param"]
+type Param = _RawParam | bool | datetime | Paramable | Iterable["Param"]
 
 
 def _encode_param(param: Param) -> _RawParam:
     if isinstance(param, bool):
         return str(param).lower()
+
+    if isinstance(param, datetime):
+        return param.isoformat()
 
     if isinstance(param, _RawParam):
         return param
@@ -56,6 +61,21 @@ class PaginatedResult[T = JsonType](typing.TypedDict):
 
 
 _print_progress = True
+
+
+def set_print_progress(value: bool) -> None:
+    global _print_progress
+    _print_progress = value
+
+
+@contextmanager
+def suppress_prints():
+    old_value = _print_progress
+    set_print_progress(False)
+    try:
+        yield None
+    finally:
+        set_print_progress(old_value)
 
 
 def _get_paginated_data[T = JsonObject](

@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Literal, NamedTuple
 
@@ -13,6 +14,12 @@ class SeasonDay(NamedTuple):
     @property
     def url_param(self) -> str:
         return f"{self.season},{self.day}"
+
+    @property
+    def timestamp(self) -> datetime:
+        from mmolb_utils.lib.time import timestamps
+
+        return timestamps()[self]
 
 
 class SnakeCaseParam:

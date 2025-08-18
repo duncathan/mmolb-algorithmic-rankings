@@ -3,8 +3,9 @@ from __future__ import annotations
 import itertools
 import typing
 from collections.abc import Iterator, Mapping
+from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, ReadOnly, TypedDict
+from typing import Literal, ReadOnly, TypedDict
 
 from mmolb_utils.apis.cashews.misc import SnakeCaseParam
 from mmolb_utils.apis.cashews.request import _get_paginated_data
@@ -21,12 +22,11 @@ if typing.TYPE_CHECKING:
         DefenseAttribute,
         PitchingAttribute,
     )
-    from mmolb_utils.lib.json_lib import JsonObject
 
-type IsoDateTime = str
+type IsoDateTime = datetime
 
 
-class EntityVersion[T: Mapping = JsonObject](TypedDict):
+class EntityVersion[T: Mapping = dict](TypedDict):
     kind: str
     """Always a valid `EntityKind` value"""
 
@@ -156,7 +156,7 @@ def get_entities(
     id: EntityID | list[EntityID] | None = None,
     order: SortOrder = "asc",
     count: int = 1000,
-) -> Iterator[EntityVersion[Any]]:
+) -> Iterator[EntityVersion[dict]]:
     for ids in _split_ids(id):
         yield from _get_paginated_data(
             "chron/v0/entities",
@@ -177,7 +177,7 @@ def get_versions(
     id: EntityID | list[EntityID] | None = None,
     order: SortOrder = "asc",
     count: int = 1000,
-) -> Iterator[EntityVersion[Any]]:
+) -> Iterator[EntityVersion[dict]]:
     for ids in _split_ids(id):
         yield from _get_paginated_data(
             "chron/v0/versions",
