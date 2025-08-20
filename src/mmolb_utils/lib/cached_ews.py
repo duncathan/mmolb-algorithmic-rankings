@@ -118,11 +118,11 @@ def _cached_entities(kind: cashews.EntityKind) -> dict[EntityID, list[dict]]:
 
     with suppress_prints():
         update_pbar = tqdm(
-            entity_iter(),
             leave=False,
             desc=f"Updating {kind.name}",
         )
-        for entity in update_pbar:
+        for entity in entity_iter():
+            update_pbar.update(1)
             entities[entity["entity_id"]].append(entity)
 
     # Save cache to file

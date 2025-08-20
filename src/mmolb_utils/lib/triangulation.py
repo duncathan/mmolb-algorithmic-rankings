@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Self
 
+from colorama import Fore
 from frozendict import frozendict
 from tqdm import tqdm
 
@@ -103,34 +104,52 @@ def attribute_dict() -> dict[Attribute, Interval]:
     return defaultdict(Interval)
 
 
+class PlayerError(ValueError):
+    def __init__(self, *args: object, player_id: EntityID, player_name: str) -> None:
+        self.player_id = player_id
+        self.player_name = player_name
+        super().__init__(*args)
+
+
 @dataclasses.dataclass
 class PlayerHistory:
     player_id: EntityID
+    working_name: str = ""
     working_attributes: dict[Attribute, Interval] = dataclasses.field(default_factory=attribute_dict)
     recomps: list[PlayerComposition] = dataclasses.field(default_factory=list)
     bonus_history: dict[datetime, list[tuple[Attribute, float]]] = dataclasses.field(
         default_factory=lambda: defaultdict(list)
     )
 
-    def update_from_talk(self, talk: dict[str, dict]) -> None:
-        for group, group_talk in talk.items():
-            for attribute, star in group_talk["stars"].items():
-                try:
-                    self.working_attributes[attribute] &= Interval.from_stars(star)
-                except ValueError as e:
-                    raise ValueError(f"Error with {attribute}: {e}") from e
+    def _update_attributes(
+        self,
+        attributes: dict[Attribute, Interval],
+        name: str | None = None,
+    ) -> None:
+        for attribute, interval in attributes.items():
+            try:
+                self.working_attributes[attribute] &= interval
+            except ValueError as e:
+                raise PlayerError(
+                    f"Error with {attribute}: {e}",
+                    player_id=self.player_id,
+                    player_name=name or self.working_name,
+                ) from e
 
-    def update_from_birth(self, birthdate: datetime) -> None:
+    def update_from_talk(self, talk: dict[str, dict]) -> None:
+        attributes: dict[Attribute, Interval] = {}
+        for _, group_talk in talk.items():
+            for attribute, star in group_talk["stars"].items():
+                attributes[attribute] = Interval.from_stars(star)
+        self._update_attributes(attributes)
+
+    def update_from_birth(self, birthdate: datetime, name: str | None = None) -> None:
         if birthdate < SeasonDay(1, 1).timestamp:
             return
 
         interval = Interval(0, 106.5)  # what?
-
-        for attribute in ALL_ATTRIBUTES:
-            try:
-                self.working_attributes[attribute] &= interval
-            except ValueError as e:
-                raise ValueError(f"Error with {attribute}: {e}") from e
+        attributes = {attribute: interval for attribute in ALL_ATTRIBUTES}
+        self._update_attributes(attributes, name)
 
     def add_bonus(self, timestamp: datetime, attribute: Attribute, bonus: float) -> None:
         self.working_attributes[attribute] -= bonus
@@ -146,7 +165,7 @@ class PlayerHistory:
             player = cached_ews.get_earliest(cashews.EntityKind.PlayerLite, self.player_id)
             birth = datetime.fromisoformat(player["valid_from"])
 
-        self.update_from_birth(birth)
+        self.update_from_birth(birth, name)
 
         bonuses = frozendict(
             {
@@ -284,7 +303,7 @@ def triangulate_attributes(player_id: EntityID) -> PlayerHistory:
     if latest_player is None:
         return player
 
-    latest_name = f"{latest_player['data']['FirstName']} {latest_player['data']['LastName']}"
+    player.working_name = f"{latest_player['data']['FirstName']} {latest_player['data']['LastName']}"
 
     feed_data = cached_ews.get_entity(cashews.EntityKind.PlayerFeed, player_id)
     feed = feed_data["data"]["feed"]
@@ -301,7 +320,7 @@ def triangulate_attributes(player_id: EntityID) -> PlayerHistory:
 
         recomp_match = recomp_pattern.match(event["text"])
         if recomp_match is not None:
-            latest_name, new_name = recomp_match.groups()
+            player.working_name, new_name = recomp_match.groups()
             player.save_composition(timestamp, new_name)
             continue
 
@@ -311,9 +330,9 @@ def triangulate_attributes(player_id: EntityID) -> PlayerHistory:
 
         name, bonus, attribute = augment_match.groups()
 
-        if (name != latest_name) and (i not in OVERWRITTEN_RECOMPS.get(player_id, set())):
-            player.save_composition(timestamp, latest_name)
-            latest_name = name
+        if (name != player.working_name) and (i not in OVERWRITTEN_RECOMPS.get(player_id, set())):
+            player.save_composition(timestamp, player.working_name)
+            player.working_name = name
 
         player.add_bonus(timestamp, attribute, float(bonus))
 
@@ -353,66 +372,57 @@ def triangulate_attributes(player_id: EntityID) -> PlayerHistory:
                     if bonus != 50:
                         player.add_bonus(timestamp, attribute, bonus)
 
-    player.save_composition(None, latest_name)
+    player.save_composition(None, player.working_name)
 
     return player
 
 
-# triangulate_attributes("6842fa8608b7fc5e21e8b1e9")
-
-RED = "\033[31m"
-RESET = "\033[0m"
-
-players_to_check = ["68412a41e2d7557e153cc723"]
-
-
-def all_players():
-    # set_print_progress(False)
-
-    results: dict[tuple[str, str], PlayerHistory] = {}
-    errors: dict[tuple[str, str], str] = {}
+def all_players(out_path: Path | None):
+    results: list[PlayerHistory] = []
+    errors: list[PlayerError] = []
 
     players = list(
         player
-        for player in cashews.get_stats(StatKey.Appearances, StatKey.PlateAppearances, names=True)
+        for player in cashews.get_stats(StatKey.Appearances, StatKey.PlateAppearances)
         if player["appearances"] or player["plate_appearances"]
-        # if player["player_id"] in players_to_check
     )
 
     cached_ews.set_ids(tuple(player["player_id"] for player in players))
 
-    for i, row in tqdm(enumerate(players), total=len(players), desc="Triangulating attributes"):
-        player_name = row["player_name"]
+    for row in tqdm(players, desc="Triangulating attributes"):
         player_id = row["player_id"]
 
-        output = f"{i + 1:5}/{len(players)} https://mmolb.com/player/{player_id} {player_name}"
-
         try:
-            results[player_id, player_name] = triangulate_attributes(player_id)
-        except ValueError as e:
-            errors[player_id, player_name] = str(e)
-            output = f"{RED}{output} {e}{RESET}"
+            results.append(triangulate_attributes(player_id))
+        except PlayerError as e:
+            errors.append(e)
         except Exception as e:
-            raise Exception(f"https://mmolb.com/player/{player_id}: {e}") from e
+            raise e.__class__(f"https://mmolb.com/player/{player_id}: {e}") from e
 
-        # print(output)
+    if errors:
+        tqdm.write(f"{Fore.RED}{len(errors)} errors:{Fore.RESET}")
+        name_len = max(len(e.player_name) for e in errors)
+        for error in errors:
+            url = f"https://mmolb.com/player/{error.player_id}"
+            name = f"{error.player_name:{name_len}}"
+            message = f"{Fore.RED}{error}{Fore.RESET}"
+            tqdm.write(f"    {url} {name} {message}")
+    else:
+        tqdm.write(f"{Fore.GREEN}No errors!{Fore.RESET}")
 
-    tqdm.write(f"{len(errors)} Errors: {errors}")
+    if out_path is None:
+        return
 
-    out_path = Path("output.csv")
     with safe_write(out_path, newline="", encoding="utf_8_sig") as csvfile:
         fieldnames = ["player_id", "player_name", "chron_valid_from", "valid_from", "valid_to", *ALL_ATTRIBUTES]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        for history in tqdm(results.values(), total=len(players), desc="Saving output file"):
+        for history in tqdm(results, desc="Saving output file"):
             for version in history.all_versions():
                 writer.writerow(version.as_json)
 
 
-cached_ews.get_entity(cashews.EntityKind.TeamFeed, "")
-# all_players()
-# set_print_progress(False)
-# cached_ews.set_use_cache(False)
-all_players()
-# # print(triangulate_attributes("684767f9c700d5fd9a78c7a9"))
+if __name__ == "__main__":
+    all_players(Path("output.csv"))
+    # all_players(None)
