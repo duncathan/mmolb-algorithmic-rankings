@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import csv
 import dataclasses
+import functools
 import math
 import re
 from collections import defaultdict
 from collections.abc import Iterator
 from datetime import datetime
+from pathlib import Path
 from typing import Self
 
+from frozendict import frozendict
+from tqdm import tqdm
+
 from mmolb_utils.apis import cashews
-from mmolb_utils.apis.cashews.misc import SeasonDay
 from mmolb_utils.apis.cashews.stats_api import StatKey
 from mmolb_utils.apis.mmolb import EntityID
 from mmolb_utils.lib import cached_ews
@@ -20,6 +24,8 @@ from mmolb_utils.lib.attributes import (
     ALL_ATTRIBUTES,
     Attribute,
 )
+from mmolb_utils.lib.io import safe_write
+from mmolb_utils.lib.time import SeasonDay, timestamp_range
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -93,58 +99,211 @@ class Interval:
         return cls() & cls(stars - 12.5, stars + 12.5)
 
 
+def attribute_dict() -> dict[Attribute, Interval]:
+    return defaultdict(Interval)
+
+
 @dataclasses.dataclass
-class PlayerVersion:
-    chron_valid_from: datetime
-    attributes: dict[Attribute, Interval] = dataclasses.field(default_factory=lambda: defaultdict(Interval))
+class PlayerHistory:
+    player_id: EntityID
+    working_attributes: dict[Attribute, Interval] = dataclasses.field(default_factory=attribute_dict)
+    recomps: list[PlayerComposition] = dataclasses.field(default_factory=list)
+    bonus_history: dict[datetime, list[tuple[Attribute, float]]] = dataclasses.field(
+        default_factory=lambda: defaultdict(list)
+    )
 
     def update_from_talk(self, talk: dict[str, dict]) -> None:
         for group, group_talk in talk.items():
             for attribute, star in group_talk["stars"].items():
                 try:
-                    self.attributes[attribute] &= Interval.from_stars(star)
+                    self.working_attributes[attribute] &= Interval.from_stars(star)
                 except ValueError as e:
                     raise ValueError(f"Error with {attribute}: {e}") from e
 
-    def update_from_birth(self, birth_season: int) -> None:
-        if birth_season == 0:
+    def update_from_birth(self, birthdate: datetime) -> None:
+        if birthdate < SeasonDay(1, 1).timestamp:
             return
-        if birth_season <= 2:
-            interval = Interval(0, 100.0)
-        else:
-            interval = Interval(0, 106.5)  # what?
+
+        interval = Interval(0, 106.5)  # what?
+
         for attribute in ALL_ATTRIBUTES:
             try:
-                self.attributes[attribute] &= interval
+                self.working_attributes[attribute] &= interval
             except ValueError as e:
                 raise ValueError(f"Error with {attribute}: {e}") from e
 
-    def as_json(self) -> dict:
-        attributes = {attribute: str(self.attributes[attribute]) for attribute in ALL_ATTRIBUTES}
-        return {
-            "chron_valid_from": self.chron_valid_from,
-            **attributes,
-        }
+    def add_bonus(self, timestamp: datetime, attribute: Attribute, bonus: float) -> None:
+        self.working_attributes[attribute] -= bonus
+        self.bonus_history[timestamp].append((attribute, bonus))
+
+    def save_composition(self, birth: datetime | None, name: str) -> None:
+        if self.recomps:
+            death = self.recomps[-1].lifetime[0]
+        else:
+            death = None
+
+        if birth is None:
+            player = cached_ews.get_earliest(cashews.EntityKind.PlayerLite, self.player_id)
+            birth = datetime.fromisoformat(player["valid_from"])
+
+        self.update_from_birth(birth)
+
+        bonuses = frozendict(
+            {
+                time: tuple(bonuses)
+                for time, bonuses in self.bonus_history.items()
+                if (birth < time) and ((death is None) or time <= death)
+            }
+        )
+        recomp = PlayerComposition(
+            player_id=self.player_id,
+            player_name=name,
+            lifetime=(birth, death),
+            initial_attributes=frozendict(
+                {attribute: self.working_attributes[attribute] for attribute in ALL_ATTRIBUTES}
+            ),
+            bonus_history=bonuses,
+        )
+        self.recomps.append(recomp)
+        self.working_attributes = attribute_dict()
+
+    def get_composition(self, timestamp: datetime | None = None) -> PlayerComposition:
+        if timestamp is None:
+            return next(comp for comp in self.recomps if comp.lifetime[1] is None)
+        for comp in self.recomps:
+            birth, death = comp.lifetime
+            if (birth < timestamp) and ((death is None) or death > timestamp):
+                return comp
+        raise ValueError(f"No composition exists at {timestamp}")
+
+    def all_versions(self) -> Iterator[PlayerSnapshot]:
+        for comp in self.recomps:
+            yield from comp.all_versions()
 
 
-augment_pattern = re.compile(r"(.+) gained \+(\d+?) (\w+?)\.")
+@dataclasses.dataclass(frozen=True)
+class PlayerComposition:
+    player_id: EntityID
+    player_name: str
+    lifetime: tuple[datetime, datetime | None]
+    initial_attributes: frozendict[Attribute, Interval]
+    bonus_history: frozendict[datetime, tuple[tuple[Attribute, float], ...]]
+
+    @functools.lru_cache
+    def _get_snapshot(self, timestamp: datetime) -> PlayerSnapshot:
+        birth, death = self.lifetime
+        if timestamp < birth or ((death is not None) and timestamp > death):
+            raise ValueError(f"Player {self.player_id} did not exist at {timestamp}")
+
+        attributes = dict(self.initial_attributes)
+        for bonus_time, bonuses in self.bonus_history.items():
+            if birth < bonus_time <= timestamp:
+                for attribute, bonus in bonuses:
+                    attributes[attribute] += bonus
+
+        player = cached_ews.get_entity(cashews.EntityKind.PlayerLite, self.player_id, timestamp)
+        name = f"{player['data']['FirstName']} {player['data']['LastName']}"
+
+        return PlayerSnapshot(
+            player_id=self.player_id,
+            player_name=name,
+            # chron_valid_from=datetime.fromisoformat(player["valid_from"]),
+            valid_from=None,
+            valid_to=None,
+            base_attributes=frozendict(attributes),
+        )
+
+    def get_snapshot_at(self, timestamp: datetime | SeasonDay) -> PlayerSnapshot:
+        if isinstance(timestamp, SeasonDay):
+            timestamp = timestamp.timestamp
+        return self._get_snapshot(timestamp)
+
+    def all_versions(self) -> Iterator[PlayerSnapshot]:
+        start, finish = self.lifetime
+        lifetimes: dict[PlayerSnapshot, set[datetime]] = defaultdict(set)
+        for day in timestamp_range(SeasonDay.from_timestamp(start), SeasonDay.from_timestamp(finish)):
+            if start <= day.timestamp:
+                snapshot = self.get_snapshot_at(day)
+                lifetimes[snapshot].add(day.timestamp)
+        for snapshot, lifetime in lifetimes.items():
+            yield dataclasses.replace(
+                snapshot,
+                valid_from=min(lifetime),
+                valid_to=max(lifetime),
+            )
 
 
-def triangulate_attributes(player_id: EntityID) -> PlayerVersion:
+@dataclasses.dataclass(frozen=True)
+class PlayerSnapshot:
+    player_id: EntityID
+    player_name: str
+    # chron_valid_from: datetime = dataclasses.field(hash=False)
+    valid_from: datetime | None
+    valid_to: datetime | None
+    base_attributes: frozendict[Attribute, Interval]
+
+    @functools.cached_property
+    def as_json(self) -> frozendict:
+        attributes = {attribute: str(self.base_attributes[attribute]) for attribute in ALL_ATTRIBUTES}
+        return frozendict(
+            {
+                "player_id": self.player_id,
+                "player_name": self.player_name,
+                "valid_from": self.valid_from,
+                "valid_to": self.valid_to,
+                **attributes,
+            }
+        )
+
+
+OVERWRITTEN_RECOMPS = {
+    "68414353f7b5d3bf791d6af7": {14},
+    "6850da687db123b15516c542": {12},
+    "684104c708b7fc5e21e8ab83": {15},
+    "68413fd1183c892d88a10074": {22},
+    "6845d8ba88056169e0079081": {14},
+    "68751e24d9c3888e3e26a328": {1},
+    "6841030dec9dc637cfd0cade": {16},
+    "6840fcd8ed58166c1895a9a5": {14},
+    "6840fa88896f631e9d688d28": {18},
+    "684674e9ec9dc637cfd0d407": {11},
+    "6840faf7e63d9bb8728896c0": {12},
+    "6805db0cac48194de3cd405f": {6},
+    "68751f7fc1f9dc22d3a8f267": {7},
+}
+
+
+augment_pattern = re.compile(r"^(?:.*?! )?(.+) gained \+(\d+?) (\w+?)[ .]")
+recomp_pattern = re.compile(r"(.+?) was Recomposed (?:into|using) (.+?)\.")
+
+
+def triangulate_attributes(player_id: EntityID) -> PlayerHistory:
+    player = PlayerHistory(player_id)
+
     latest_player = cached_ews.get_entity(cashews.EntityKind.PlayerLite, player_id)
+    if latest_player is None:
+        return player
+
     latest_name = f"{latest_player['data']['FirstName']} {latest_player['data']['LastName']}"
-    player = PlayerVersion(datetime.fromisoformat(latest_player["valid_from"]))
-    feed = cached_ews.get_entity(cashews.EntityKind.PlayerFeed, player_id)["data"]["feed"]
 
-    player.update_from_talk(latest_player["data"].get("Talk", {}))
+    feed_data = cached_ews.get_entity(cashews.EntityKind.PlayerFeed, player_id)
+    feed = feed_data["data"]["feed"]
 
-    boosts: dict[Attribute, float] = defaultdict(float)
+    latest_talk = cached_ews.get_entity(cashews.EntityKind.Talk, player_id)
+    if latest_talk is None:
+        return player
+    player.update_from_talk(latest_talk["data"])
 
-    for event in reversed(feed):
-        if event["type"] != "augment":
+    for i, event in reversed(list(enumerate(feed))):
+        timestamp = datetime.fromisoformat(event["ts"])
+        if timestamp > datetime.fromisoformat(latest_talk["valid_from"]):
             continue
-        if "was Recomposed" in event["text"]:
-            break
+
+        recomp_match = recomp_pattern.match(event["text"])
+        if recomp_match is not None:
+            latest_name, new_name = recomp_match.groups()
+            player.save_composition(timestamp, new_name)
+            continue
 
         augment_match = augment_pattern.match(event["text"])
         if augment_match is None:
@@ -152,21 +311,18 @@ def triangulate_attributes(player_id: EntityID) -> PlayerVersion:
 
         name, bonus, attribute = augment_match.groups()
 
-        if name != latest_name:
-            break
+        if (name != latest_name) and (i not in OVERWRITTEN_RECOMPS.get(player_id, set())):
+            player.save_composition(timestamp, latest_name)
+            latest_name = name
 
-        player.attributes[attribute] -= float(bonus)
-        boosts[attribute] += float(bonus)
-
-        timestamp = datetime.fromisoformat(event["ts"])
+        player.add_bonus(timestamp, attribute, float(bonus))
 
         if timestamp <= SeasonDay(4, 120).timestamp:
             continue
 
-        # print(event)
-
         new_talk = cached_ews.get_entity(cashews.EntityKind.Talk, player_id, at=timestamp)
-        player.update_from_talk(new_talk["data"])
+        if new_talk is not None:
+            player.update_from_talk(new_talk["data"])
 
     if latest_player["data"]["Birthseason"] <= 1:
         # in early S1, megas and teamwides didn't have links and didn't end up in the player feed
@@ -183,24 +339,21 @@ def triangulate_attributes(player_id: EntityID) -> PlayerVersion:
                 for event in reversed(team_feed):
                     if event["type"] != "augment":
                         continue
-                    if event["links"]:
+                    if any(link["id"] == player_id for link in event["links"]):
                         continue
+
+                    timestamp = datetime.fromisoformat(event["ts"])
 
                     augment_match = player_aug_pattern.match(event["text"])
                     if augment_match is None:
                         continue
 
                     bonus, attribute = augment_match.groups()
-                    player.attributes[attribute] -= float(bonus)
-                    boosts[attribute] += float(bonus)
+                    bonus = float(bonus)
+                    if bonus != 50:
+                        player.add_bonus(timestamp, attribute, bonus)
 
-    player.update_from_birth(latest_player["data"]["Birthseason"])
-
-    for attribute, boost in boosts.items():
-        player.attributes[attribute] += boost
-
-    # for attribute, interval in player.attributes.items():
-    #     print(f"{attribute:13} {str(interval):16} {interval.value}")
+    player.save_composition(None, latest_name)
 
     return player
 
@@ -216,19 +369,19 @@ players_to_check = ["68412a41e2d7557e153cc723"]
 def all_players():
     # set_print_progress(False)
 
-    results: dict[tuple[str, str], PlayerVersion] = {}
+    results: dict[tuple[str, str], PlayerHistory] = {}
     errors: dict[tuple[str, str], str] = {}
 
     players = list(
         player
-        for player in cashews.get_stats(StatKey.Appearances, StatKey.PlateAppearances, season=4, names=True)
+        for player in cashews.get_stats(StatKey.Appearances, StatKey.PlateAppearances, names=True)
         if player["appearances"] or player["plate_appearances"]
         # if player["player_id"] in players_to_check
     )
 
     cached_ews.set_ids(tuple(player["player_id"] for player in players))
 
-    for i, row in enumerate(players):
+    for i, row in tqdm(enumerate(players), total=len(players), desc="Triangulating attributes"):
         player_name = row["player_name"]
         player_id = row["player_id"]
 
@@ -236,25 +389,28 @@ def all_players():
 
         try:
             results[player_id, player_name] = triangulate_attributes(player_id)
-        except Exception as e:
+        except ValueError as e:
             errors[player_id, player_name] = str(e)
             output = f"{RED}{output} {e}{RESET}"
-            # raise
+        except Exception as e:
+            raise Exception(f"https://mmolb.com/player/{player_id}: {e}") from e
 
-        print(output)
+        # print(output)
 
-    print(f"{len(errors)} Errors: {errors}")
+    tqdm.write(f"{len(errors)} Errors: {errors}")
 
-    with open("output.csv", "w", newline="") as csvfile:
-        fieldnames = ["player_id", "chron_valid_from", *ALL_ATTRIBUTES]
+    out_path = Path("output.csv")
+    with safe_write(out_path, newline="", encoding="utf_8_sig") as csvfile:
+        fieldnames = ["player_id", "player_name", "chron_valid_from", "valid_from", "valid_to", *ALL_ATTRIBUTES]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        for (player_id, _), version in results.items():
-            writer.writerow({"player_id": player_id, **version.as_json()})
+        for history in tqdm(results.values(), total=len(players), desc="Saving output file"):
+            for version in history.all_versions():
+                writer.writerow(version.as_json)
 
 
-# cached_ews.get_entity(cashews.EntityKind.Season, "")
+cached_ews.get_entity(cashews.EntityKind.TeamFeed, "")
 # all_players()
 # set_print_progress(False)
 # cached_ews.set_use_cache(False)

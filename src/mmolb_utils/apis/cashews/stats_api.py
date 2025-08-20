@@ -5,9 +5,10 @@ from collections.abc import Iterable
 from enum import Enum, auto
 from typing import Literal, Required, TypedDict, TypeGuard, cast
 
-from mmolb_utils.apis.cashews.misc import SeasonDay, SnakeCaseParam
+from mmolb_utils.apis.cashews.misc import SnakeCaseParam
 from mmolb_utils.apis.cashews.request import _get_simple_data
 from mmolb_utils.apis.mmolb import EntityID
+from mmolb_utils.lib.time import SeasonDay
 
 
 class StatKey(SnakeCaseParam, Enum):

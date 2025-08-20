@@ -13,9 +13,6 @@ from mmolb_utils.apis.cashews.derived_api import (
     get_scorigami,
     get_teams,
 )
-from mmolb_utils.apis.cashews.misc import (
-    SeasonDay,
-)
 from mmolb_utils.apis.cashews.request import (
     Param,
 )
@@ -42,5 +39,4 @@ __all__ = [
     "StatKey",
     "GroupColumn",
     "Param",
-    "SeasonDay",
 ]

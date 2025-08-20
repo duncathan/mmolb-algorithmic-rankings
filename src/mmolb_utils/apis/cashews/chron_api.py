@@ -150,6 +150,16 @@ def get_entities(
 ) -> Iterator[EntityVersion[CategoryTalk]]: ...
 
 
+@typing.overload
+def get_entities(
+    kind: EntityKind,
+    at: IsoDateTime | None = None,
+    id: EntityID | list[EntityID] | None = None,
+    order: SortOrder = "asc",
+    count: int = 1000,
+) -> Iterator[EntityVersion[dict]]: ...
+
+
 def get_entities(
     kind: EntityKind,
     at: IsoDateTime | None = None,

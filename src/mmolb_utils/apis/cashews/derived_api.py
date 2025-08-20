@@ -1,9 +1,10 @@
 from collections.abc import Iterator
 
-from mmolb_utils.apis.cashews.misc import SeasonDay, SortOrder
+from mmolb_utils.apis.cashews.misc import SortOrder
 from mmolb_utils.apis.cashews.request import _get_paginated_data
 from mmolb_utils.apis.mmolb import EntityID
 from mmolb_utils.lib.json_lib import JsonObject
+from mmolb_utils.lib.time import SeasonDay
 
 CashewsGame = JsonObject  # TODO: TypedDict
 
