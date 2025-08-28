@@ -1,17 +1,55 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from enum import Enum, auto
-from typing import Literal, Required, TypedDict, TypeGuard, cast
+from typing import Literal, Self, TypedDict, cast
 
 from mmolb_utils.apis.cashews.misc import SnakeCaseParam
 from mmolb_utils.apis.cashews.request import _get_simple_data
 from mmolb_utils.apis.mmolb import EntityID
 from mmolb_utils.lib.time import SeasonDay
 
+FilterOp = Literal["gt", "lt", "eq", "lte", "gte"]
 
-class StatKey(SnakeCaseParam, Enum):
+
+class FilterableStat[T]:
+    def __iter__(self) -> Iterator[Self]:
+        # makes it convenient to just accept iterables of the type
+        yield self
+
+    def _filter(self, other: object, op: FilterOp) -> T:
+        """Returns the filter object according to the value and operation"""
+        raise NotImplementedError
+
+    def __gt__(self, other: object) -> T:
+        return self._filter(other, "gt")
+
+    def __lt__(self, other: object) -> T:
+        return self._filter(other, "lt")
+
+    def __eq__(self, other: object) -> T:  # type: ignore[override]
+        return self._filter(other, "eq")
+
+    def __le__(self, other: object) -> T:
+        return self._filter(other, "lte")
+
+    def __ge__(self, other: object) -> T:
+        return self._filter(other, "gte")
+
+
+@dataclasses.dataclass(frozen=True)
+class StatFilter:
+    stat: StatKey
+    op: FilterOp
+    value: int
+
+    @property
+    def param_name(self) -> str:
+        return f"filter[{self.stat.url_param}][{self.op}]"
+
+
+class StatKey(SnakeCaseParam, FilterableStat[StatFilter], Enum):
     AllowedStolenBases = 0
     Appearances = 1
     Assists = 2
@@ -70,25 +108,14 @@ class StatKey(SnakeCaseParam, Enum):
     Walks = 55
     Wins = 56
 
-    def _filter(self, other: object, op: FilterOp) -> _StatFilter:
+    def __hash__(self) -> int:
+        # required since we override __eq__ for filters
+        return hash(self.name)
+
+    def _filter(self, other: object, op: FilterOp) -> StatFilter:
         if not isinstance(other, int):
-            raise NotImplementedError
-        return _StatFilter(self, op, other)
-
-    def __gt__(self, other: object) -> _StatFilter:
-        return self._filter(other, "gt")
-
-    def __lt__(self, other: object) -> _StatFilter:
-        return self._filter(other, "lt")
-
-    def __eq__(self, other: object) -> _StatFilter:  # type: ignore[override]
-        return self._filter(other, "eq")
-
-    def __le__(self, other: object) -> _StatFilter:
-        return self._filter(other, "lte")
-
-    def __ge__(self, other: object) -> _StatFilter:
-        return self._filter(other, "gte")
+            return NotImplemented
+        return StatFilter(self, op, other)
 
 
 class GroupColumn(SnakeCaseParam, Enum):
@@ -103,39 +130,14 @@ class GroupColumn(SnakeCaseParam, Enum):
     PlayerName = auto()
 
 
-FilterOp = Literal["gt", "lt", "eq", "lte", "gte"]
-
-
-def is_filter_iterable(value: object) -> TypeGuard[Iterable[_StatFilter]]:
-    if not isinstance(value, Iterable):
-        return False
-    return all(isinstance(subvalue, _StatFilter) for subvalue in value)
-
-
-@dataclasses.dataclass(frozen=True)
-class _StatFilter:
-    stat: StatKey
-    op: FilterOp
-    value: int
-
-    @property
-    def param_name(self) -> str:
-        return f"filter[{self.stat.url_param}][{self.op}]"
-
-    def __and__(self, other: object) -> tuple[_StatFilter, ...]:
-        if isinstance(other, _StatFilter):
-            return (self, other)
-        if is_filter_iterable(other):
-            return (self, *other)
-        raise NotImplementedError
-
-
-type StatFilter = _StatFilter | Iterable[_StatFilter]
-
-
 class StatRow(TypedDict, total=False):
-    player_id: Required[str]
+    player_id: EntityID
     player_name: str
+    team_id: EntityID
+    league_id: EntityID
+    season: int
+    day: int
+    game_id: EntityID
     allowed_stolen_bases: int
     appearances: int
     assists: int
@@ -207,12 +209,9 @@ def get_stats(  # noqa: C901
     game: EntityID | None = None,
     sort: StatKey | None = None,
     count: int | None = None,
-    filters: StatFilter = (),
+    filters: Iterable[StatFilter] = (),
     names: bool = False,
 ) -> list[StatRow]:
-    if isinstance(filters, _StatFilter):
-        filters = (filters,)
-
     filter_dict = {filt.param_name: filt.value for filt in filters}
 
     return cast(
