@@ -68,26 +68,11 @@ class StatTarget(Enum):
     MatchmakingFactor = auto()
 
 
-@dataclasses.dataclass(frozen=True, unsafe_hash=True)
-class StatOperation(FilterableStat[StatOpFilter]):
-    lhs: Operand
-    rhs: Operand
-    op: ArithmeticOp
-
-    _evaluation_cache: dict[EntityID, float] = dataclasses.field(
-        default_factory=dict, init=False, hash=False, repr=False, compare=False
-    )
-
-    type _CacheTuple = tuple[StatTarget, SeasonDay | None, SeasonDay | None, int | None]
-    _stat_cache: ClassVar[dict[_CacheTuple, dict[EntityID, dict[StatKey, float]]]] | None = None
-
-    def _filter(self, other: object, op: FilterOp) -> StatOpFilter:
-        if not isinstance(other, StatOperation | float):
-            return NotImplemented
-
-        return StatOpFilter(self, other, op)
+class StatOpMixin:
+    """Helper class just to split out the operator overloading definitions"""
 
     def _operation(self, other: object, op: ArithmeticOp, is_rhs: bool = False) -> StatOperation:
+        assert isinstance(self, StatOperation)
         if not isinstance(other, Operand):
             return NotImplemented
 
@@ -144,6 +129,26 @@ class StatOperation(FilterableStat[StatOpFilter]):
             return self.rhs
         return 0 - self
 
+
+@dataclasses.dataclass(frozen=True, unsafe_hash=True)
+class StatOperation(StatOpMixin, FilterableStat[StatOpFilter]):
+    lhs: Operand
+    rhs: Operand
+    op: ArithmeticOp
+
+    _evaluation_cache: dict[EntityID, float] = dataclasses.field(
+        default_factory=dict, init=False, hash=False, repr=False, compare=False
+    )
+
+    type _CacheTuple = tuple[StatTarget, SeasonDay | None, SeasonDay | None, int | None]
+    _stat_cache: ClassVar[dict[_CacheTuple, dict[EntityID, dict[StatKey, float]]]] | None = None
+
+    def _filter(self, other: object, op: FilterOp) -> StatOpFilter:
+        if not isinstance(other, StatOperation | float):
+            return NotImplemented
+
+        return StatOpFilter(self, other, op)
+
     def __str__(self) -> str:
         return f"({str(self.lhs)} {self.op} {str(self.rhs)})"
 
@@ -154,9 +159,74 @@ class StatOperation(FilterableStat[StatOpFilter]):
             elif isinstance(operand, StatKey):
                 yield operand
 
+    @staticmethod
+    def _simple_stat_calc(
+        to_pull: list[StatKey],
+        cache: dict[EntityID, dict[StatKey, float]],
+        start: SeasonDay | None,
+        end: SeasonDay | None,
+        season: int | None,
+        group: GroupColumn,
+        id_key: str,
+    ) -> None:
+        stats = get_stats(*to_pull, group=group, start=start, end=end, season=season)
+        for row in stats:
+            for stat in to_pull:
+                cache[row[id_key]][stat] = row[stat.url_param]
+
+    @staticmethod
+    def _team_against_calc(
+        to_pull: list[StatKey],
+        cache: dict[EntityID, dict[StatKey, float]],
+        start: SeasonDay | None,
+        end: SeasonDay | None,
+        season: int | None,
+    ) -> None:
+        if season is not None:
+            start = SeasonDay(season, 0)
+            end = SeasonDay(season, 300)
+
+        assert end is not None
+        start = start or SeasonDay(0, 0)
+
+        stats = []
+        for season in range(start.season, end.season + 1):
+            # really ugly pagination stuff because oops too many rows!
+            start_day, end_day = 0, 300
+
+            if season == start.season:
+                start_day = start.day
+            if season == end.season:
+                end_day = end.day
+
+            for dates in itertools.batched(range(start_day, end_day + 1), 40):
+                stats.extend(
+                    get_stats(
+                        *to_pull,
+                        group=(GroupColumn.Team, GroupColumn.Game),
+                        start=SeasonDay(season, dates[0]),
+                        end=SeasonDay(season, dates[-1]),
+                    )
+                )
+
+        team_to_game_stats: dict[EntityID, list[StatRow]] = defaultdict(list)
+        game_id_to_game_stats: dict[EntityID, list[StatRow]] = defaultdict(list)
+
+        for row in stats:
+            team_to_game_stats[row["team_id"]].append(row)
+            game_id_to_game_stats[row["game_id"]].append(row)
+
+        for stat in to_pull:
+            for team, games in team_to_game_stats.items():
+                total = 0
+                for game in games:
+                    game_row = next(row for row in game_id_to_game_stats[game["game_id"]] if row != game)
+                    total += game_row[stat.url_param]
+                cache[team][stat] = total
+
     @classmethod
     @functools.cache
-    def _stats(  # noqa: C901
+    def _stats(
         cls,
         *fields: StatKey,
         target: StatTarget,
@@ -177,11 +247,7 @@ class StatOperation(FilterableStat[StatOpFilter]):
         else:
             to_pull = list(fields)
 
-        def simple_calc(group: GroupColumn, id_: str) -> None:
-            stats = get_stats(*to_pull, group=group, start=start, end=end, season=season)
-            for row in stats:
-                for stat in to_pull:
-                    cache[row[id_]][stat] = row[stat.url_param]
+        simple_calc = functools.partial(cls._simple_stat_calc, to_pull, cache, start, end, season)
 
         if to_pull:
             match target:
@@ -192,51 +258,7 @@ class StatOperation(FilterableStat[StatOpFilter]):
                 case StatTarget.League:
                     simple_calc(GroupColumn.League, "league_id")
                 case StatTarget.TeamAgainst:
-                    if season is not None:
-                        start = SeasonDay(season, 0)
-                        end = SeasonDay(season, 300)
-
-                    assert end is not None
-                    if start is None:
-                        start = SeasonDay(0, 0)
-
-                    stats = []
-                    for season in range(start.season, end.season + 1):
-                        # really ugly pagination stuff because oops too many rows!
-                        if season == start.season:
-                            start_day = start.day
-                        else:
-                            start_day = 0
-                        if season == end.season:
-                            end_day = end.day
-                        else:
-                            end_day = 300
-                        for dates in itertools.batched(range(start_day, end_day + 1), 40):
-                            print(f"[{season}, {dates[0]}) to ({season}, {dates[-1]}]")
-                            stats.extend(
-                                get_stats(
-                                    *to_pull,
-                                    group=(GroupColumn.Team, GroupColumn.Game),
-                                    start=SeasonDay(season, dates[0]),
-                                    end=SeasonDay(season, dates[-1]),
-                                )
-                            )
-
-                    team_to_game_stats: dict[EntityID, list[StatRow]] = defaultdict(list)
-                    game_id_to_game_stats: dict[EntityID, list[StatRow]] = defaultdict(list)
-
-                    for row in stats:
-                        team_to_game_stats[row["team_id"]].append(row)
-                        game_id_to_game_stats[row["game_id"]].append(row)
-
-                    for stat in to_pull:
-                        for team, games in team_to_game_stats.items():
-                            total = 0
-                            for game in games:
-                                game_row = next(row for row in game_id_to_game_stats[game["game_id"]] if row != game)
-                                total += game_row[stat.url_param]
-                            cache[team][stat] = total
-
+                    cls._team_against_calc(to_pull, cache, start, end, season)
                 case _:
                     raise NotImplementedError
 
