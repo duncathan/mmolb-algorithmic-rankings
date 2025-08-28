@@ -197,7 +197,7 @@ class StatRow(TypedDict, total=False):
     wins: int
 
 
-def get_stats(  # noqa: C901
+def get_stats(
     *fields: StatKey,
     group: GroupColumn | Iterable[GroupColumn] = GroupColumn.Player,
     start: SeasonDay | None = None,
