@@ -61,7 +61,6 @@ def _cached_entities(kind: cashews.EntityKind) -> dict[EntityID, list[dict]]:
     # Load cache from storage
 
     load_pbar = tqdm(
-        total=local_file.stat().st_size,
         unit="B",
         unit_scale=True,
         unit_divisor=1024,
@@ -76,6 +75,7 @@ def _cached_entities(kind: cashews.EntityKind) -> dict[EntityID, list[dict]]:
         metadata = {}
 
     try:
+        load_pbar.total = local_file.stat().st_size
         with local_file.open("r", encoding="utf_8") as file:
             wrapped = IterCallbackIOWrapper(load_pbar.update, file, "read")
             with jsonlines.Reader(wrapped) as reader:
@@ -84,6 +84,7 @@ def _cached_entities(kind: cashews.EntityKind) -> dict[EntityID, list[dict]]:
 
     except (json.JSONDecodeError, FileNotFoundError):
         metadata[kind.url_param] = None
+        load_pbar.close()
 
     after = metadata.get(kind.url_param)
     if after is not None:
